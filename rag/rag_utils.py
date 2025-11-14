@@ -62,9 +62,11 @@ def add_papers_to_chroma(papers):
         abstract = paper.get("abstract")
         title = paper.get("title")
         paper_id = paper.get("paperId") # <-- Use the unique paperId
+        year = paper.get("year") # *** CHANGE 1A: EXTRACTING THE YEAR ***
+
 
         # Skip the paper if key info is missing
-        if not abstract or not paper_id or not title:
+        if not abstract or not paper_id or not title or not year:
             print(f"Skipping paper, missing data. Title: {title}")
             continue
 
@@ -77,8 +79,10 @@ def add_papers_to_chroma(papers):
             documents_to_add.append(doc_content)
             metadatas_to_add.append({
                 "title": title, 
-                "url": paper.get("url", "")
+                "url": paper.get("url", ""),
+                "year": year  # *** CHANGE 1B: ADDING YEAR TO METADATA ***  
             })
+
             ids_to_add.append(paper_id) # Use the unique ID
             embeddings_to_add.append(emb)
 
@@ -163,15 +167,30 @@ def ask_doctor_chat(query, patient_name=None, top_k=5):
     if documents:
         context += "Relevant research papers:\n"
         for doc, meta in zip(documents, metadatas):
-            context += f"- {meta.get('title', 'Untitled')}: {doc}\n"
+            title = meta.get('title', 'Untitled')
+            url = meta.get('url', 'N/A')
+            year = meta.get('year', 'N/A')
+            
+            # *** CHANGE 2A: STRUCTURE THE CITATION METADATA EXPLICITLY ***
+            context += f"SOURCE METADATA: Title: {title}, Year: {year}, URL: {url}\n"
+            context += f"DOCUMENT CONTENT: {doc}\n\n"
     else:
         context += "No relevant research papers found.\n"
 
     # --- Step 4: Send to LLM ---
-    prompt = f"Answer the question using ONLY the following context:\n{context}\nQuestion: {query}"
+    system_instruction = (
+        "You are an expert medical research assistant. Answer the user's question "
+        "concisely and professionally, relying *only* on the provided context. "
+        "Crucially, for every piece of information you provide, you MUST cite the source document "
+        "by including its **Title**, **Publication Year**, and **URL**, as provided in the SOURCE METADATA."
+    )
+    
+    prompt = f"Context:\n{context}\nQuestion: {query}"    
     response = llm_client.chat.completions.create(
         model=AZURE_OPENAI_MODEL,
-        messages=[{"role": "user", "content": prompt}],
+        messages=[
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt}],
         max_tokens=500
     )
 
